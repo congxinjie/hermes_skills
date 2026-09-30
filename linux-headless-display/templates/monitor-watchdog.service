@@ -1,0 +1,20 @@
+[Unit]
+Description=Monitor replug watchdog: restart gnome-shell on display hotplug
+After=graphical-session.target
+
+[Service]
+Type=simple
+# 改成脚本实际绝对路径
+ExecStart=/home/USER/.local/bin/monitor-replug-watchdog.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+
+# 安装步骤：
+#   cp monitor-replug-watchdog.sh ~/.local/bin/ && chmod +x ~/.local/bin/monitor-replug-watchdog.sh
+#   把本文件放到 ~/.config/systemd/user/monitor-watchdog.service，改 ExecStart 路径
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now monitor-watchdog.service
+# 查看运行：journalctl --user -u monitor-watchdog -f

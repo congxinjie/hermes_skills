@@ -1,0 +1,16 @@
+[Unit]
+Description=WiFi hotspot (hostapd on ap0, uplink via wlo1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/home/USER/hotspot/prepare.sh
+ExecStart=/usr/sbin/hostapd /home/USER/hotspot/hostapd.conf
+ExecStartPost=/usr/sbin/dnsmasq -C /home/USER/hotspot/dnsmasq.conf
+ExecStopPost=/home/USER/hotspot/cleanup.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

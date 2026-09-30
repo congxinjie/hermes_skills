@@ -46,6 +46,16 @@ Covers the whole pipeline for the Chinese web:
 
 `scripts/check-github-access.sh` runs the whole matrix in one command.
 
+### 4. `linux-wifi-hotspot`
+
+**Use when turning a Linux box into a WiFi hotspot / softAP** while keeping its own uplink.
+
+- The full `hostapd` + `dnsmasq` + `ap0` recipe
+- Why NetworkManager can't manage `ap0`, and the `nmcli device set ap0 managed no` workaround (runtime‑only — must be redone each boot)
+- Intel 9560 specifics: 2.4 GHz‑only AP, no‑IR/DFS channels, AP channel must match the client interface
+- A systemd unit plus `prepare.sh` / `cleanup.sh`
+- `references/intel9560-softap-session.md` documents a real debugging session
+
 ## Install
 
 Copy a skill folder into your Hermes skills directory:
@@ -54,6 +64,7 @@ Copy a skill folder into your Hermes skills directory:
 cp -r chinese-web-image-sourcing ~/.hermes/skills/research/
 cp -r linux-headless-display     ~/.hermes/skills/sysadmin/
 cp -r github-stable-access       ~/.hermes/skills/github/
+cp -r linux-wifi-hotspot         ~/.hermes/skills/sysadmin/
 ```
 
 Hermes discovers `SKILL.md` files automatically. For the watchdog, install the unit as a systemd user service and enable it.
@@ -61,4 +72,4 @@ Hermes discovers `SKILL.md` files automatically. For the watchdog, install the u
 ## Licence
 
 Each skill keeps its own licence (see the `license:` field in its `SKILL.md`):
-`chinese-web-image-sourcing` → MIT, `linux-headless-display` → CC‑BY‑4.0, `github-stable-access` → MIT.
+`chinese-web-image-sourcing` → MIT, `linux-headless-display` → CC‑BY‑4.0, `github-stable-access` → MIT, `linux-wifi-hotspot` → MIT.

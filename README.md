@@ -56,6 +56,18 @@ Covers the whole pipeline for the Chinese web:
 - A systemd unit plus `prepare.sh` / `cleanup.sh`
 - `references/intel9560-softap-session.md` documents a real debugging session
 
+### 5. `campus-portal-autologin`
+
+**Use when a campus portal keeps demanding re‑login** (Ruijie ePortal / Dr.COM style captive portals).
+
+- Identifying the portal from the redirect URL (`wlanacname` / `wlanacip` ⇒ Ruijie ePortal)
+- Finding the real login endpoint inside the portal's JS (`/api/portal/v1/login`)
+- A small Python daemon + systemd timer that re‑authenticates every 2 minutes
+- **The #1 pitfall: when the network drops, DNS often drops with it** — so the script must fall back to the portal's IP, or it never even sends the request
+- Disabling WiFi power‑save (a common cause of *random* drops) and multi‑round re‑checking so a slow auth doesn't look like a failure
+
+Ships as a working example against the NJUST portal.
+
 ## Install
 
 Copy a skill folder into your Hermes skills directory:
@@ -65,6 +77,7 @@ cp -r chinese-web-image-sourcing ~/.hermes/skills/research/
 cp -r linux-headless-display     ~/.hermes/skills/sysadmin/
 cp -r github-stable-access       ~/.hermes/skills/github/
 cp -r linux-wifi-hotspot         ~/.hermes/skills/sysadmin/
+cp -r campus-portal-autologin    ~/.hermes/skills/sysadmin/
 ```
 
 Hermes discovers `SKILL.md` files automatically. For the watchdog, install the unit as a systemd user service and enable it.
@@ -72,4 +85,4 @@ Hermes discovers `SKILL.md` files automatically. For the watchdog, install the u
 ## Licence
 
 Each skill keeps its own licence (see the `license:` field in its `SKILL.md`):
-`chinese-web-image-sourcing` → MIT, `linux-headless-display` → CC‑BY‑4.0, `github-stable-access` → MIT, `linux-wifi-hotspot` → MIT.
+`chinese-web-image-sourcing` → MIT, `linux-headless-display` → CC‑BY‑4.0, `github-stable-access` → MIT, `linux-wifi-hotspot` → MIT, `campus-portal-autologin` → MIT.

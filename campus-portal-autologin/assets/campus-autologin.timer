@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically run campus auto re-login
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+AccuracySec=10s
+Unit=campus-autologin.service
+
+[Install]
+WantedBy=timers.target

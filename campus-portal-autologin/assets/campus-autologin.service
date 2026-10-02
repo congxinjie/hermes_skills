@@ -1,0 +1,9 @@
+[Unit]
+Description=Campus network auto re-login (Ruijie ePortal)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=CHANGE_ME
+ExecStart=/usr/bin/python3 /home/CHANGE_ME/.local/bin/campus-autologin.py

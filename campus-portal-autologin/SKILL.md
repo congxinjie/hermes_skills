@@ -1,7 +1,7 @@
 ---
 name: campus-portal-autologin
 description: Use when campus portal keeps demanding re-login.
-version: 1.2.0
+version: 1.3.0
 author: congxinjie
 license: MIT
 ---
@@ -90,6 +90,19 @@ PY
 ```
 `login: True` + 日志出现 `登录成功 ✔` 即成功。
 
+### 离线验证「HTTPS 劫持」检测（推荐，不用等真掉线）
+用 `scripts/test-hijack-detection.py`：在本机起一个**自签证书的 HTTPS 服务**冒充"被劫持的 HTTPS"，验证 `https_ok()` 能否识破：
+- 访问正常外网站点 → `True`
+- 访问自签证书站点 → `False`
+- 组合判定 → "HTTP 通但 HTTPS 被劫持" → 会触发重登
+
+```bash
+python3 scripts/test-hijack-detection.py            # 默认测 ~/.local/bin/campus-autologin.py
+python3 scripts/test-hijack-detection.py /path/to/campus-autologin.py   # 指定脚本
+# 输出 "总体: PASS ✅" 即探测逻辑正确
+```
+仅在本机 `/tmp` 操作（不改系统配置、不写日志），依赖 `openssl`。
+
 ## 坑（务必看）
 1. **全局代理会毁了直连**：机器上有 Clash 等时，`http_proxy/https_proxy` 会让访问校园网走代理 → 502/000。脚本里必须 **不用代理**（Python 用 `ProxyHandler({})`；curl 加 `--noproxy '*'`）。
 2. **`no_proxy` 只放行 10.x**，校园 portal 域名（如 `m.xxx.edu.cn`）不在内 → 照样被代理拦，所以显式绕代理。
@@ -105,3 +118,8 @@ PY
    - 更彻底：写 `/etc/hosts`（`<IP> <portal域名>`），全系统生效。注意本环境 **sudo 走管道拿不到免密密码**，要用 `sudo cp /tmp/hosts_new /etc/hosts` 这种非管道形式。
 10. `reply_code=500` 偶发：服务器端瞬时拒绝，**加重试**（本技能脚本已内置 3 轮 × 域名/IP 两条路）。
 11. 本工具只治"认证掉线"；若掉线是 **校园 DNS 全面故障**，连 QQ/网页都上不了，则需等 DNS 恢复（或把常用域名也写进 hosts）。
+12. **⚠️ HTTP 探针会漏掉"只劫持 HTTPS"的状态（2026-10-03 实测，掉线 1h48m 无人发现）**：认证失效后，劫持**可能只发生在 HTTPS 上** —— 明文 `http://www.baidu.com` 一路 200、脚本判定"在线"并静默跳过（`--verbose` 外的分支不写日志，所以日志看起来"一切正常"），而 QQ/Hermes 侧持续报 `SSL: CERTIFICATE_VERIFY_FAILED: self-signed certificate`。**探针必须同时校验 HTTPS**：用默认 SSL 上下文请求一个外网 https 页面，证书被替换/自签会抛 `SSLError` → 判为离线 → 触发重登。本技能脚本已内置 `https_ok()`，判定改为 `http_up and https_ok()`；若只有 HTTP 通、HTTPS 不通，日志写"疑似遭劫持"，便于事后区分两种掉线。
+13. 现场判断"是否处于劫持窗口"的旁证（README 式一行）：
+    `timeout 10 openssl s_client -connect <主机>:443 -servername <主机> </dev/null 2>/dev/null | grep -E 'subject=|issuer='`
+    正常应是 GlobalSign / DigiCert 等公有 CA 签发的该域名证书；出现自签或陌生 CN 就是被中间人替换了。
+14. 排错顺序建议：**先确认"到底哪一层断了"**，别急着重登 —— `curl` 直连外网 https 是否 200、证书 issuer 是否正常、`getent hosts` 能否解析。若 HTTP 正常而只有 HTTPS 异常，问题在劫持/拦截，不是账号掉线。

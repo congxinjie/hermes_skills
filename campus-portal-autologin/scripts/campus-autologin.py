@@ -54,6 +54,25 @@ def online():
         return False
 
 
+HTTPS_PROBE = "https://www.baidu.com"
+
+
+def https_ok():
+    """HTTPS 证书校验探测。
+
+    2026-10-03 的教训：校园网劫持只发生在 HTTPS 上 —— 明文 HTTP 探针
+    (online() 用的 http://www.baidu.com) 一路 200，脚本就一直静默认为
+    "在线"，而 QQ 那边持续报 SSL CERTIFICATE_VERIFY_FAILED(self-signed)
+    掉线近 2 小时。这里用默认 SSL 上下文做一次真校验收，证书被替换/自签
+    会抛 SSLError，从而把这种"HTTP 通但 HTTPS 被劫持"的状态识别出来。
+    """
+    try:
+        req = urllib.request.Request(HTTPS_PROBE, headers={"User-Agent": UA})
+        return OPENER.open(req, timeout=6).getcode() == 200
+    except Exception:
+        return False
+
+
 def _post(url, body, use_host_header):
     headers = {"Content-Type": "application/json", "User-Agent": UA}
     if use_host_header:
@@ -94,9 +113,11 @@ def main():
     if not user or not pwd:
         log("配置文件缺少 USERNAME/PASSWORD")
         sys.exit(2)
-    if online():
+    http_up = online()
+    https_up = https_ok()
+    if http_up and https_up:
         if "--verbose" in sys.argv:
-            log("在线，无需操作")
+            log("在线，无需操作 (HTTP+HTTPS 均正常)")
         return
     # DNS 是否可用（仅记录，便于诊断）
     try:
@@ -104,14 +125,17 @@ def main():
         dns = "ok"
     except Exception:
         dns = "fail"
-    log("检测到未认证，尝试自动登录… (DNS:%s)" % dns)
+    if http_up and not https_up:
+        log("HTTP 可用但 HTTPS 证书校验失败(疑似遭劫持)，尝试重新认证… (DNS:%s)" % dns)
+    else:
+        log("检测到未认证，尝试自动登录… (DNS:%s)" % dns)
     if login(user, pwd):
         # 登录成功≠立刻能上网：认证生效可能有延迟，多等几轮再复检，避免误报
         waits, elapsed = [2, 5, 8, 12], 0
         for n, w in enumerate(waits, 1):
             time.sleep(w)
             elapsed += w
-            if online():
+            if online() and https_ok():
                 log("复检: 已恢复在线 ✔ (第%d次复检, 累计%ds)" % (n, elapsed))
                 return
         log("复检: 仍不在线 ✘ (已复检%d次/累计%ds)" % (len(waits), elapsed))

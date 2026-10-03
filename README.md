@@ -68,6 +68,8 @@ Covers the whole pipeline for the Chinese web:
 
 Ships as a working example against the NJUST portal.
 
+`scripts/test-hijack-detection.py` spins up a local self‑signed HTTPS server to prove — offline — that the probe catches the "HTTP up but HTTPS hijacked" state.
+
 ## Install
 
 Copy a skill folder into your Hermes skills directory:

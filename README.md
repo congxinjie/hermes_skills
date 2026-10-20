@@ -73,6 +73,15 @@ Ships as a working example against the NJUST portal.
 
 `scripts/test-hijack-detection.py` spins up a local self‑signed HTTPS server to prove — offline — that the probe catches the "HTTP up but HTTPS hijacked" state.
 
+### 6. `qqbot-media-upload-troubleshooting`
+
+**Use when the QQ bot sends text fine but cannot send images or files.**
+
+- The outbound upload goes to Tencent COS (`qqbot-file-upload-*.cos.accelerate.myqcloud.com`) — a domain that many Chinese networks cannot resolve, and Hermes's SSRF guard reports a DNS failure as `Blocked request`
+- A 4-step triage: system resolver → UDP :53 → proxy → DoH, which tells you whether this is a blocked domain, a resolver gap, or real auth failure
+- Three fixes: route the adapter through the proxy (no root), run a local DoH forwarder (permanent), or pin `/etc/hosts` (temporary)
+- Six hard-won pitfalls, e.g. **`QQBOT_DIRECT=0` does not work** — the code is `not bool(os.getenv(...))` and `bool("0")` is `True`, so you must delete the line or set it to empty; and `DNSOverTLS=yes` also forces DoT onto the DHCP-supplied resolver, which takes the whole box offline
+
 ## Install
 
 Copy a skill folder into your Hermes skills directory:
@@ -83,6 +92,7 @@ cp -r linux-headless-display     ~/.hermes/skills/sysadmin/
 cp -r github-stable-access       ~/.hermes/skills/github/
 cp -r linux-wifi-hotspot         ~/.hermes/skills/sysadmin/
 cp -r campus-portal-autologin    ~/.hermes/skills/sysadmin/
+cp -r qqbot-media-upload-troubleshooting ~/.hermes/skills/messaging/
 ```
 
 Hermes discovers `SKILL.md` files automatically. For the watchdog, install the unit as a systemd user service and enable it.

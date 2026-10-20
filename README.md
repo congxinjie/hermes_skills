@@ -28,8 +28,8 @@ Covers the whole pipeline for the Chinese web:
 - Inventorying display state via DRM sysfs vs `xrandr`
 - Simulating an unplug and verifying the desktop survives it
 - Diagnosing the **GNOME ≤3.36 hot‑plug bug** (top bar / dock vanish after replug; `desktopGrid is undefined`)
-- Restarting `gnome-shell` safely, and a **watchdog** that auto‑recovers on replug
-  (`scripts/monitor-replug-watchdog.sh` + `templates/monitor-watchdog.service`)
+- **⚠️ Why you must NOT auto‑restart `gnome-shell`:** on Ubuntu 20.04 the packaged `desktop-icons@csoriano` is a **3.34** extension running on shell **3.36.9**. `global.reexec_self()` makes it throw `Argument 'instance' may not be null` at `desktopGrid.js:209`, which **kills the whole session** — screen loses signal, ToDesk dies (`Fatal IO error 11 on X server :0`), and GDM's replacement X fails with `drmSetMaster failed`. Recovery needs a hard power‑cycle.
+- The safe recovery: re‑enable the output with `xrandr --output <OUT> --auto --primary`. **v2** of `scripts/monitor-replug-watchdog.sh` does only that on replug and never touches the shell (`+ templates/monitor-watchdog.service`)
 - Remote‑desktop agent prerequisites (ToDesk / VNC / RDP) on a headless box
 - GPU power state and other pitfalls
 

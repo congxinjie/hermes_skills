@@ -1,70 +1,83 @@
 #!/bin/bash
-# monitor-replug-watchdog.sh
-# 防止 GNOME 3.36 显示器热插拔 bug（顶栏/dock 消失）：
-# 检测到 显示器从"全部断开"→"有连接" 时，自动重启 gnome-shell，
-# 让 shell 在显示器已连接的状态下重新初始化。
+# monitor-replug-watchdog.sh  (v2 · xrandr 安全版)
 #
-# 原理：gnome-shell 在"无显示器"状态启动后，插回显示器时
-# desktopGrid 初始化失败（日志报 "desktopGrid is undefined"），
-# 导致顶栏和 dock 不渲染。重启 shell 即可修复。
+# 背景：v1 在显示器热插拔后调用 global.reexec_self() 重启 gnome-shell。
+#       但本机 desktop-icons@csoriano 是 3.34 版扩展、跑在 GNOME 3.36.9 上，
+#       shell reexec 时会在 desktopGrid.js:209 抛
+#       "Argument 'instance' may not be null"，把整个会话带崩
+#       （表现为：接显示器无信号 + ToDesk 掉线）。
 #
-# 安装：与 templates/monitor-watchdog.service 配合，
-#   chmod +x 本脚本，ExecStart 指向本脚本绝对路径，
-#   systemctl --user enable --now monitor-watchdog.service
+# v2 原则：只做「重新点亮输出」，绝不重启、不杀 gnome-shell。
+#
+# 日志：~/.local/state/monitor-watchdog.log  +  journalctl -t monitor-watchdog
 
-DRM_PATTERNS="/sys/class/drm/card0-*/status"
+DRM_GLOB="/sys/class/drm/card0-*/status"
+LOG_DIR="$HOME/.local/state"
+LOG="$LOG_DIR/monitor-watchdog.log"
+mkdir -p "$LOG_DIR"
 
 log() {
-    logger -t monitor-watchdog "$1"
-    echo "$(date '+%F %T') $1"
+    logger -t monitor-watchdog "$1" 2>/dev/null
+    echo "$(date '+%F %T') $1" >> "$LOG"
 }
 
-any_connected() {
-    for f in $DRM_PATTERNS; do
-        [ "$(cat "$f" 2>/dev/null)" = "connected" ] && return 0
+# 统计当前"connected"的输出数量
+dr_count() {
+    local n=0 f
+    for f in $DRM_GLOB; do
+        [ "$(cat "$f" 2>/dev/null)" = "connected" ] && n=$((n+1))
     done
-    return 1
+    echo "$n"
 }
 
-restart_gnome_shell() {
-    local pid
-    pid=$(pgrep -o gnome-shell)
-    [ -z "$pid" ] && { log "gnome-shell 不在运行，跳过"; return; }
-
-    # 优先用 GNOME 官方重启 API（等效 Alt+F2 r），失败则 SIGTERM（GDM 自动拉起）
-    if dbus-send --session --dest=org.gnome.Shell --type=method_call \
-        /org/gnome/Shell org.gnome.Shell.Eval string:'global.reexec_self()' \
-        >/dev/null 2>&1; then
-        log "已通过 dbus 重启 gnome-shell (pid=$pid)"
-    else
-        kill -TERM "$pid" 2>/dev/null && log "已 SIGTERM gnome-shell (pid=$pid)，GDM 将自动拉起新实例"
-    fi
+# sysfs 名 -> xrandr 名：  card0-HDMI-A-1 -> HDMI-1 ; card0-DP-1 -> DP-1
+xname() {
+    local b
+    b=$(basename "$(dirname "$1")")
+    b=${b#card0-}
+    b=${b/HDMI-A-/HDMI-}
+    echo "$b"
 }
 
-# 初始状态：以当前真实状态为准
-# （若此刻无显示器，之后插上时能正确触发；若此刻有显示器则不会误触发）
-if any_connected; then
-    prev_connected=1
-else
-    prev_connected=0
-fi
+# 对已连接但未启用的输出执行 xrandr --auto
+recover() {
+    export DISPLAY="${DISPLAY:-:0}"
+    export XAUTHORITY="${XAUTHORITY:-/run/user/$(id -u)/gdm/Xauthority}"
 
-log "看门狗启动（轮询间隔 3 秒）"
+    local f name did=0
+    for f in $DRM_GLOB; do
+        [ "$(cat "$f" 2>/dev/null)" = "connected" ] || continue
+        name=$(xname "$f")
+
+        # 已经点亮（connected 且带分辨率）就跳过
+        if xrandr --query 2>/dev/null | grep -qE "^${name} connected( primary)? +[0-9]+x[0-9]+"; then
+            continue
+        fi
+
+        log "尝试点亮 ${name} …"
+        if xrandr --output "$name" --auto --primary >>"$LOG" 2>&1; then
+            log "${name} 点亮成功 ✅"
+            did=1
+        else
+            log "${name} 点亮失败 ✘（可尝试重新插拔或手动 xrandr）"
+        fi
+    done
+
+    [ "$did" -eq 0 ] && log "无需点亮（系统已自动生效）"
+    # 注意：这里绝不重启 gnome-shell
+}
+
+prev=$(dr_count)
+log "看门狗 v2 启动（xrandr 安全模式，轮询 3s），当前已连接输出数=$prev"
 
 while true; do
-    if any_connected; then
-        now_connected=1
-    else
-        now_connected=0
+    now=$(dr_count)
+    if [ "$now" -gt 0 ] && [ "$prev" -eq 0 ]; then
+        log "检测到显示器接入（0 → $now），用 xrandr 恢复（不重启 shell）"
+        sleep 2
+        recover
+        sleep 5
     fi
-
-    # 状态跃迁：全部断开 → 出现连接
-    if [ "$now_connected" -eq 1 ] && [ "$prev_connected" -eq 0 ]; then
-        log "检测到显示器重新接入，重启 gnome-shell 以修复桌面组件"
-        restart_gnome_shell
-        sleep 8   # 等 shell 重启完成再继续监控
-    fi
-
-    prev_connected=$now_connected
+    prev=$now
     sleep 3
 done

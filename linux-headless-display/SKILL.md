@@ -1,7 +1,7 @@
 ---
 name: linux-headless-display
 description: Use for headless Linux desktop and monitor hotplug fixes.
-version: 1.0.0
+version: 1.1.0
 author: hermes-curator
 license: CC-BY-4.0
 metadata:
@@ -46,12 +46,25 @@ journalctl --since "2 hours ago" | grep -iE "gnome-shell.*(crash|segfault|error|
 ```
 Cause: shell started while zero monitors were connected; on replug, mutter fails to rebuild the desktop grid (GNOME ≤3.36 bug; fixed in GNOME 42+/Ubuntu 22.04+).
 
-Fix — restart gnome-shell so it initializes with the monitor present:
-- `Alt+F2` → `r` (interactive), or
-- `dbus-send --session --dest=org.gnome.Shell --type=method_call /org/gnome/Shell org.gnome.Shell.Eval string:'global.reexec_self()'`, or
-- `kill -TERM $(pgrep -o gnome-shell)` (GDM respawns it automatically — verified: PID 1259→1324)
+⚠️ **DANGER — do NOT auto-restart gnome-shell when `desktop-icons@csoriano` is installed.**
 
-Prevention: watchdog polling DRM sysfs status; on transition all-disconnected → connected, restart the shell. See `scripts/monitor-replug-watchdog.sh` + `templates/monitor-watchdog.service` (install as systemd user service, enable). Root fix: upgrade to GNOME 42+.
+On Ubuntu 20.04 the packaged desktop-icons is the **3.34** extension running on GNOME **3.36.9** (`metadata.json: "shell-version": ["3.34.0"]`, package `20.04.0-3~ubuntu20.04.6`). On shell reexec it throws `JS ERROR: Argument 'instance' (type interface) may not be null` at `desktopGrid.js:209` (`_onDestroy`), which **kills the whole session**: screen loses signal, `polkitd: Unregistered Authentication Agent for unix-session:N (disconnected from bus)`, and remote agents die (`ToDesk: Fatal IO error 11 on X server :0`). GDM's replacement X session then fails with `No outputs definitely connected` + `drmSetMaster failed: Permission denied`. Only a hard power-cycle recovers.
+
+Check before touching the shell:
+```bash
+gnome-extensions list --enabled | grep desktop-icons
+grep -A1 shell-version /usr/share/gnome-shell/extensions/desktop-icons@csoriano/metadata.json
+gnome-shell --version
+```
+
+**Preferred fix (v2, safe): re-enable the output with xrandr — never restart the shell.**
+```bash
+xrandr --query | grep -E "^HDMI|^DP"          # find the connected output
+xrandr --output HDMI-1 --auto --primary
+```
+`scripts/monitor-replug-watchdog.sh` (v2) does exactly this on the all-disconnected → connected transition: it polls `/sys/class/drm/card0-*/status` and calls `xrandr --auto`, and never touches gnome-shell.
+
+**Fallbacks, in increasing risk:** reload just the extension (`gnome-extensions disable/enable desktop-icons@csoriano`) → disable the extension entirely → manual `Alt+F2` → `r` (user present) → `kill -TERM $(pgrep -o gnome-shell)` ONLY if desktop-icons is not installed. Root fix: GNOME 42+ or replace desktop-icons with `nemo-desktop`.
 
 ## 4. Remote desktop on the headless box
 - **ToDesk** (relay-based, survives unplug; this user's primary): works with 0 monitors — captures the X session framebuffer. Verify processes + `/var/log/todesk/` logs. Linux build has NO power-saving/black-screen option (Windows-only feature) — not needed anyway, iGPU idles itself.
@@ -60,6 +73,8 @@ Prevention: watchdog polling DRM sysfs status; on transition all-disconnected �
 - Network caveats: campus WiFi client isolation blocks WiFi↔WiFi; ethernet (eno2) bypasses it; no public IPv4 → cross-network needs IPv6 or a relay tool like ToDesk.
 
 ## Pitfalls
+- **NEVER automate a gnome-shell restart without checking extension/shell version compatibility.** A 3.34 `desktop-icons` on shell 3.36 turns `global.reexec_self()` into a session-killer (see §3): no signal, remote desktop dead, and the box needs a hard power-off. Compare `metadata.json: shell-version` against `gnome-shell --version` first.
+- After that crash GDM reports `drmSetMaster failed: Permission denied` because a stale X still owns the GPU — a `systemctl restart gdm` from tty (sometimes twice) clears it.
 - If a headless→replug cycle is followed by a REBOOT, GDM can fail to start and the box sticks at the Ubuntu logo (Plymouth never exits). Recovery is tty + `sudo systemctl restart gdm` — see the "Boot stuck at Ubuntu logo" section in `linux-system-diagnostics` (also covers why force-power-off makes it worse).
 - Bash: define functions BEFORE calling them — the watchdog's initial-state check failed when placed above the `any_connected()` definition.
 - Watchdog initial state must be computed from CURRENT sysfs state (`if any_connected; then prev=1; else prev=0; fi`), never assumed — otherwise a replug at boot is missed.

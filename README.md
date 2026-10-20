@@ -13,6 +13,7 @@ Each folder is a self‑contained skill: `SKILL.md` plus optional `scripts/` and
 Covers the whole pipeline for the Chinese web:
 
 - Baidu image/article search (Bing/Google are usually blocked)
+- **Multi‑engine fallback** (`scripts/search-cn.py`): Baidu rate‑limits you into a captcha after a few queries (302 → `wappass.baidu.com`), so rotate to Bing / Sogou / 360 instead of retrying — and rewrite over‑generic Chinese queries (Bing CN drowns them in shop/official pages)
 - Resolving Baidu `/link?url=…` redirects to real URLs
 - Extracting in‑article images (WeChat `mmbiz.qpic.cn` needs a `Referer`)
 - The `html.unescape()` trap — `&amp;` in image URLs silently yields 0‑byte downloads
@@ -43,6 +44,8 @@ Covers the whole pipeline for the Chinese web:
 - Raising the anonymous API limit (60/h) with a token
 - Installing a hub skill from a tarball when the API is rate‑limited
 - Pitfalls: proxy env vars poisoning direct‑connect tests, `no_proxy` covering only LAN ranges, and confusing "raw is blocked" with "the API is rate‑limited"
+- **When SSH :22 dies mid‑push** (`kex_exchange_identification: Connection closed`), switch the remote to the 443 endpoint — verified reliable: `git remote set-url origin ssh://git@ssh.github.com:443/<user>/<repo>.git`
+- Distinguishing a broken *router* (ICMP+DNS fine, all TCP 80/443 → 000) from a blocked GitHub
 
 `scripts/check-github-access.sh` runs the whole matrix in one command.
 

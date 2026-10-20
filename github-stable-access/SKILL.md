@@ -1,7 +1,7 @@
 ---
 name: github-stable-access
 description: Use when GitHub is blocked, flaky, or rate-limited.
-version: 1.0.0
+version: 1.1.0
 author: congxinjie
 license: MIT
 metadata:
@@ -89,7 +89,18 @@ hub 安装依赖 GitHub API，限额耗尽会报 `rate limit exceeded`（约 1 �
 4. **HTTPS clone 失败 ≠ 仓库不存在**：先 `ssh -T` 确认认证，再怀疑仓库名/权限（`Repository not found` 也可能是**名字拼错**或建在别的账号下）。
 5. **jsDelivr 的目录列表 ≠ 实际可服务**：树里列出的文件仍可能 404，拿不到就换 codeload 整包。
 6. **`&amp;` 转义**：从 HTML 抓到的图/文件 URL 带 `&amp;`，不 `html.unescape()` 会下载 0 字节。
-7. **edge case**：若 SSH 22 端口也被封，试 `ssh.github.com:443`（`~/.ssh/config` 里 `Hostname ssh.github.com` / `Port 443`）。
+7. **SSH 22 被封时走 443 —— 这是最可靠的兜底**（实测有效）。症状是 `kex_exchange_identification: Connection closed by remote host` 或 `Connection timed out during banner exchange`。
+   - 先验证：`ssh -p 443 git@ssh.github.com` → 返回 `Hi <user>!` 就说明 443 通；
+   - 然后把 remote 改成 443 形式（**永久生效，比 22 稳**）：
+     `git remote set-url origin ssh://git@ssh.github.com:443/<user>/<repo>.git`
+   - 也可写进 `~/.ssh/config`：
+     ```
+     Host github.com
+         Hostname ssh.github.com
+         Port 443
+     ```
+8. **同一时刻可能出现「ICMP/DNS 通、但 TCP 80/443 全 000」**：这不是 GitHub 的问题，是**上游路由器/软路由出口**坏了（WAN 掉线、代理挂了、或需要认证）。判断法：`ping 223.5.5.5` 通 + `curl http://www.baidu.com` 000 → 换网络（或修路由器），别在 GitHub 上瞎折腾。
+9. **jsDelivr 并非总可用**：本机实测出现过 `cdn.jsdelivr.net` → 000 的时段，但同期的 `github.com` / `codeload.github.com` 正常。**拿仓库优先 codeload，单文件才试 jsDelivr。**
 
 ## 验证
 ```bash
